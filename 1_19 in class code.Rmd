@@ -82,8 +82,10 @@ ggplot(fit, aes(E, NOx)) +
 
 # Optimism of training error
 
+Take a look at the random set of data points from lecture. 
+
 ```{r echo = TRUE, eval = FALSE}
-# simulate data and fig from ISL 2.9
+# simulate data from ISL figure 2.9
 sim_mse <- tibble(
   x = runif(n = 50, min = 0, max = 100),
   y = 5.055901 - 0.1848551*x + 0.00748706*x^2 - 0.00005543478*x^3 + rnorm(50, sd = 0.6)
@@ -106,7 +108,9 @@ ggplot(sim_mse, aes(x, y)) +
   theme(legend.position = "none")
 ```
 
-Now, the test set.
+As we said in the lecture, the main idea is that as the flexibility increases, the models are more likely to fit the data; the training MSE will decrease. But this does not guarantee the test MSE also decreases.
+
+Here, I applied the models fit on the training set to a new test data set generated from the same underlying process. That is, everything is identical, even the DGP. Just this time, we are changing the set of data, and overlaying the original fit lines to the new data.
 
 ```{r echo = TRUE, eval = FALSE}
 sim_mse_test <- tibble(
@@ -131,7 +135,35 @@ ggplot(sim_mse, aes(x, y)) +
   theme(legend.position = "none")
 ```
 
+It's not as clear as you might hope, but still we can see that these models no longer perform as well as compared to the training data, especially the *overfit purple line*. 
+
+The point? When we rely only on training error, we essentially fool ourselves into thinking we've found the best model, because as we continue to tune to the training data, and run into the threat of overfitting to the training data. Thus we get too optimistic. 
+
+That is, the model starts to detect artifacts and random patterns specific to the single set of observations but which may not really exist in the DGP. 
+
 # Bias-variance trade-off
+
+This brings us to the BV tradeoff. 
+
+If we could get rid of all bias and variance such that, `MSE = irreducible error`, then we would be left with something called the *oracle* predictor because it is *impossible* to actually achieve. 
+
+So, short of finding the oracle predictor, we need to try to build a model that finds the sweet spot between bias and variance. 
+
+Recall a few things from the lecture:
+
+Bias: Error that is introduced by approximating a real-life problem using a simplified model
+
+    $$\text{Bias} = \E[\hat{f}(x_o)] - f(x_0)$$
+
+Variance: amount by which $\hat{f}$ would change if we estimated it using a different training data set
+
+    $$\text{Variance} = \E[\hat{f}(x_0) - \E[\hat{f}(x_0)]]^2$$
+
+That is, the variance is the expected squared deviation of our function around its mean. 
+
+So, in plain English, the bias is the ability of the learner to get predictions right, and the variance is the ability to do so many times with new data (i.e., “consistency”)
+
+Let's revisit some of the figures from lecture to see these principles in action. First, plot the data we previously simulated, based on the figure 2.9 from ISL:
 
 ```{r echo = TRUE, eval = FALSE}
 ggplot(sim_mse, aes(x, y)) +
@@ -141,6 +173,7 @@ ggplot(sim_mse, aes(x, y)) +
        y = expression(Y))
 ```
 
+Recall, that an example of a low bias, high variance model is an extremely local version of kNN, which here `k = 1`. 
 
 ```{r echo = TRUE, eval = FALSE}
 # estimate
@@ -160,6 +193,7 @@ sim_mse %>%
        y = expression(Y))
 ```
 
+And on the opposite extreme, a high bias, low variance model is simply the mean:
 
 ```{r echo = TRUE, eval = FALSE}
 ggplot(sim_mse, aes(x, y)) +
@@ -170,10 +204,11 @@ ggplot(sim_mse, aes(x, y)) +
        y = expression(Y))
 ```
 
+Overall, all of these are far too extreme to be useful, so there must be a middle ground. Well, what exactly do we want? More or less variance? More or less bias? Let's revisit the dart-board from lecture:
 
 ```{r echo = TRUE, eval = FALSE}
 # set number of throws
-n_games <- 10
+n_games <- 100
 
 # throw `n_games` of darts and get the coordinates where they hit
 dart_game <- function(n_games, 
