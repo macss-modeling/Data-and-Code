@@ -3,6 +3,9 @@ title: "Model Fitting, Bias, & Variance"
 author: "Philip Waggoner, MACS 30100 <br /> University of Chicago"
 output: pdf_document
 ---
+```{r}
+#install.packages('ggforce')
+```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
@@ -173,7 +176,7 @@ ggplot(sim_mse, aes(x, y)) +
 
 ```{r echo = TRUE, eval = FALSE}
 # set number of throws
-n_games <- 10
+n_games <- 100
 
 # throw `n_games` of darts and get the coordinates where they hit
 dart_game <- function(n_games, 
@@ -250,25 +253,115 @@ With the data loaded, answer the following questions. The objective here is twof
 
     a. Select only the Obama feeling thermometer (`ftobama`), household income (`faminc`), party affiliation on a 3 point scale (`pid3`), birth year (`birthyr`), and gender (`gender`) (*be sure to recode missing values to `NA` and omit these*)
   
+```{r echo = TRUE, eval = FALSE}
+
+dfnew <- anes %>%
+  select(ftobama, faminc, pid3, birthyr, gender) %>%
+  mutate(ftobama = replace(ftobama, ftobama == 998, NA)) %>%
+  filter(is.na(ftobama)==FALSE)
+  
+```
+
     b. Split the subset data into training (75%) and testing (25%) sets (*hint*: remember to set the seed (`set.seed()`) prior to creating the split, as the proportions are generated at random)
   
+```{r echo = TRUE, eval = FALSE}
+#install.packages("tidymodels")
+library(tidymodels)
+
+set.seed(1234)
+split_tidy <- initial_split(dfnew,
+                            prop = 0.75) # default is 75%
+
+# take a look...
+split_tidy
+
+# create
+train <- training(split_tidy)
+test  <- testing(split_tidy)
+
+```
     c. Plot the distributions of each against each other to ensure they look similar
+```{r echo = TRUE, eval = FALSE}
+# viz
+tidy <- train %>% 
+  ggplot(aes(x = ftobama)) + 
+  geom_line(stat = "density") + 
+  geom_line(data = test, 
+            stat = "density", 
+            col = "red") +
+  labs(title = "Via Tidymodels") +
+  theme_minimal()
+
+tidy
+```
+
+2. Fit a linear regression (`lm()`) on the *training* data, predicting Obama approval as a function of all other features.
+```{r echo = TRUE, eval = FALSE}
+
+model <- lm(ftobama~., data=train)
+summary(model)
+
+```
 
 
-2. Fit a linear regression (`lm()`) on the *training* data, predicting trump approval as a function of all other features.
 
 
 3. Calculate the training mean squared error (*hint*: consider using the `mse()` function from Dr. Soltoff's `rcfss` package, which is at the uc-cfss github, *not* on CRAN).
 
+```{r}
+#install.packages("remotes")
+#remotes::install_github("uc-cfss/rcfss")
+library(rcfss)
+
+mse(train, train$ftobama, predict(model, train))
+
+
+```
+
 
 4. Calculate predictions for the testing set, using the model you built on the training set (*hint*: consider either `predict()` from base R, or `augment()` from `broom`).
 
+```{r}
+
+test_pred <- predict(model, test)
+
+```
 
 5. Calculate the testing mean squared error.
+```{r}
 
+print(mse(test, test$ftobama, test_pred))
+
+
+```
 
 6. Compare the mean squared error from both sets numerically, side-by-side. What do you see? *Discuss in your groups and record a few sentences as a response.*
 
+Response:
+The MSE for testing data is larger than MSE for training data.
+It makes sense because we are fitting the linear model on training set.
+
+
 
 7. Write your own function to calculate the MSE. Then, use it to re-answer questions 3 and 5. Present the results here, and compare with the `rcfss` approach via `mse()`. These results should be identical to the `mse()` version. Are they? If not, *why* do you think? (*just a sentence or two on your general thoughts if they differ*) 
+
+
+```{r}
+mymse <- function(data, truth, estimate) {
+  mse = sum((truth-estimate)^2)/dim(data)[1]
+  return(mse)
+}
+
+#train
+print(mymse(train, train$ftobama, predict(model, train)))
+
+```
+```{r}
+#test
+print(mymse(test, test$ftobama, predict(model, test)))
+```
+
+The result is identical!
+
+
 

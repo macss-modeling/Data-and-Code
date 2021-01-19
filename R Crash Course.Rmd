@@ -552,6 +552,7 @@ Finally, let's take a look at some key functions for splitting data into trainin
 First, `tidymodels`.
 
 ```{r}
+#install.packages("tidymodels")
 library(tidymodels)
 library(tidyverse)
 
