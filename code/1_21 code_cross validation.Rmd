@@ -1,5 +1,5 @@
 ---
-title: "Resampling"
+title: "Cross Validation"
 author: "Philip Waggoner, MACS 30100 <br /> University of Chicago"
 output: pdf_document
 ---
