@@ -4,10 +4,6 @@ author: "Philip Waggoner, MACS 30100 <br /> University of Chicago"
 output: pdf_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(eval = FALSE, echo = TRUE, message = FALSE, warning = FALSE)
-```
-
 # Overview
 
 We will be using the Ames housing data for today's code. TThe codebook and definitions of functions are included in the package documentation note: <https://cran.r-project.org/web/packages/AmesHousing/AmesHousing.pdf>. 
