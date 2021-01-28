@@ -1,0 +1,193 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[
+]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\IfFileExists{bookmark.sty}{\usepackage{bookmark}}{\usepackage{hyperref}}
+\hypersetup{
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+\urlstyle{same} % disable monospaced font for URLs
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+% Set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+
+\author{}
+\date{\vspace{-2.5em}}
+
+\begin{document}
+
+title: Jan 19th in class problems author: Alex Przybycin
+
+With the data loaded, answer the following questions. The objective here
+is twofold: 1) to practice your statistical computing skills, and 2)
+apply and explore error from fitting models on different sets of data.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Using some of the techniques we covered last week:
+
+  \begin{enumerate}
+  \def\labelenumii{\alph{enumii}.}
+  \item
+    Select only the Obama feeling thermometer (\texttt{ftobama}),
+    household income (\texttt{faminc}), party affiliation on a 3 point
+    scale (\texttt{pid3}), birth year (\texttt{birthyr}), and gender
+    (\texttt{gender}) (\emph{be sure to recode missing values to
+    \texttt{NA} and omit these})
+  \item
+    Split the subset data into training (75\%) and testing (25\%) sets
+    (\emph{hint}: remember to set the seed (\texttt{set.seed()}) prior
+    to creating the split, as the proportions are generated at random)
+  \item
+    Plot the distributions of each against each other to ensure they
+    look similar
+  \end{enumerate}
+\end{enumerate}
+
+library(here) library(tidyverse) NESdta \textless-
+read\_csv(here(``data'', ``anes\_2016.csv''))
+
+NESdta\_short \textless- NESdta \%\textgreater\% select(ftobama, pid3,
+birthyr, gender, faminc) head(NESdta\_short, n = 5)
+
+set.seed(1234)
+
+split\_tidy \textless- initial\_split(NESdta\_short, prop = 0.75)
+
+train\_tidy \textless- training(split\_tidy) test\_tidy \textless-
+testing(split\_tidy)
+
+tidy \textless- train\_tidy \%\textgreater\% ggplot(aes(x = ftobama)) +
+geom\_line(stat = ``density'') + geom\_line(data = test\_tidy, stat =
+``density'', col = ``red'') + labs(title = ``Via Tidymodels'') +
+theme\_minimal() ```
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  Fit a linear regression (\texttt{lm()}) on the \emph{training} data,
+  predicting trump approval as a function of all other features.
+\end{enumerate}
+
+training\_regression \textless- lm( ftobama \textasciitilde{}
+pid3+birthyr+gender+faminc, data = train\_tidy)
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Calculate the training mean squared error (\emph{hint}: consider using
+  the \texttt{mse()} function from Dr.~Soltoff's \texttt{rcfss} package,
+  which is at the uc-cfss github, \emph{not} on CRAN).
+\end{enumerate}
+
+library(rcfss)
+
+mse(train\_tidy)
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{3}
+\tightlist
+\item
+  Calculate predictions for the testing set, using the model you built
+  on the training set (\emph{hint}: consider either \texttt{predict()}
+  from base R, or \texttt{augment()} from \texttt{broom}).
+\end{enumerate}
+
+library(base)
+
+test\_predict = predict(train\_tidy)
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{4}
+\tightlist
+\item
+  Calculate the testing mean squared error.
+\end{enumerate}
+
+training\_mse = mean(train\_tidy\$residuals\^{}2)
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{5}
+\tightlist
+\item
+  Compare the mean squared error from both sets numerically,
+  side-by-side. What do you see? \emph{Discuss in your groups and record
+  a few sentences as a response.}
+\end{enumerate}
+
+I'm not sure as to how to do this numerically. The function I used about
+gets the mean of the sum of squares from the training data.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{6}
+\tightlist
+\item
+  Write your own function to calculate the MSE. Then, use it to
+  re-answer questions 3 and 5. Present the results here, and compare
+  with the \texttt{rcfss} approach via \texttt{mse()}. These results
+  should be identical to the \texttt{mse()} version. Are they? If not,
+  \emph{why} do you think? (\emph{just a sentence or two on your general
+  thoughts if they differ})
+\end{enumerate}
+
+I couldn't find the mse() function on the cfss github. Am I supposed to
+install that as a package in R first and find the documentation for it
+through R?
+
+\end{document}
