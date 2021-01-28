@@ -1,0 +1,440 @@
+---
+title: "Regression, pt. 2"
+author: "Philip Waggoner, MACS 30100 <br /> University of Chicago"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE, echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Overview
+
+We will be using the Ames housing data for today's code. TThe codebook and definitions of functions are included in the package documentation note: <https://cran.r-project.org/web/packages/AmesHousing/AmesHousing.pdf>. 
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(glmnet)
+library(leaps)
+library(rcfss)
+library(patchwork)
+library(AmesHousing)
+
+set.seed(1234)
+theme_set(theme_minimal())
+
+# Set up
+ames_split <- initial_split(AmesHousing::make_ames(), 
+                            prop = 0.7, 
+                            strata = "Sale_Price")
+ames_train <- training(ames_split)
+ames_test  <- testing(ames_split)
+
+head(ames_train)
+
+glimpse(ames_train)
+
+# select numeric features for simpler demo
+ames_lite <- ames_train %>%
+  select_if(is.numeric)
+```
+
+## Best Subset Selection
+
+Recall, best subset selection:
+
+1. First, fit the null model, with *no* features with only an intercept
+2. Then, we fit a model containing only *one* feature; do this for all models up to p and then pick the best; set it aside
+3. Then, we fit a model containing only *two* features; pick the best  and set it aside
+4. And so on for all features in the model, giving us a look at models fits across possible combinations of features in the data space
+5. Finally, select the best model from among this subset to serve as the best model, with the best combination of features
+
+```{r warning = FALSE}
+set.seed(1234)
+
+# Fit the model
+best_subset <- regsubsets(Sale_Price ~ .,
+                          data = ames_lite, 
+                          nvmax = 34); summary(best_subset)
+```
+
+```{r}
+results <- summary(best_subset)
+
+names(results) # prints the "values" returned by fitting via the regsubsets() function
+```
+
+```{r}
+results$rss
+results$rsq
+results$cp
+```
+
+```{r}
+plot(best_subset, scale="r2")
+```
+
+```{r}
+# best models per each information loss metric
+results_best <- tibble(
+  `adj_r2` = which.max(results$adjr2),
+  BIC = which.min(results$bic),
+  `c_p` = which.min(results$cp)
+) %>%
+  gather(statistic, best)
+
+results_best
+```
+
+```{r}
+# extract and organize the results; then plot
+tibble(`c_p` = results$cp,
+       `adj_r2` = results$adjr2,
+       BIC = results$bic) %>%
+  mutate(predictors = row_number()) %>%
+  gather(statistic, value, -predictors) %>%
+  ggplot(aes(predictors, value, 
+             color = statistic)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(data = results_best,
+             aes(xintercept = best, 
+                 color = statistic), 
+             linetype = 2) +
+  facet_wrap(~ statistic, scales = "free") +
+  ggtitle("Subset selection")
+```
+
+```{r}
+coef(best_subset, results_best$best) %>%
+  set_names(results_best$best) %>%
+  map(enframe) %>%
+  bind_rows(.id = "num_vars") %>%
+  filter(name != "(Intercept)") %>%
+  ggplot(aes(fct_rev(name), value)) +
+  geom_point(aes(color = num_vars)) +
+  coord_flip() +
+  labs(x = "Variable",
+       y = "Estimated coefficient",
+       color = "# of Features in Model") +
+  theme(legend.position = "bottom")
+```
+
+CV for evaluation.
+
+```{r message = FALSE, warning = FALSE}
+set.seed(1234) 
+
+predict.regsubsets <- function(object, newdata, id ,...) {
+  form <- as.formula(Sale_Price ~ .) 
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id = id)
+  xvars <- names(coefi)
+  as.vector(mat[, xvars] %*% coefi, mode = "integer")
+}
+
+predict_all <- function(object, newdata, k){
+  map(k, ~ predict.regsubsets(object, newdata, id = .x)) %>%
+    set_names(k)
+}
+
+ames_lite_cv <- vfold_cv(ames_lite, v = 10)
+
+ames_lite_cv <- ames_lite_cv %>%
+  mutate(model = map(splits, ~ regsubsets(Sale_Price ~ ., data = analysis(.x), nvmax = 34)), 
+         pred = map2(model, splits, ~ predict_all(.x, assessment(.y), k = 1:33))) %>% 
+  unnest(pred, .preserve = splits) %>%
+  group_by(id) %>%
+  mutate(k = 1:33,
+         truth = map(splits, ~ assessment(.x)$Sale_Price)) %>%
+  unnest(pred, truth) %>%
+  group_by(id, k) %>%
+  mse(truth = truth, estimate = pred) %>%
+  group_by(k) %>%
+  summarize(.estimate = mean(.estimate))
+
+ggplot(ames_lite_cv, aes(k, .estimate)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(ames_lite_cv$k, 
+                     labels = as.character(ames_lite_cv$k), 
+                     breaks = ames_lite_cv$k) + 
+  theme(axis.text.x = element_text(angle = 75, vjust = 0.5)) +
+  geom_vline(xintercept = which.min(ames_lite_cv$.estimate), linetype = 2) +
+  labs(title = "Subset selection",
+       x = "Number of variables",
+       y = "10-fold CV MSE")
+```
+
+## Forward and Backward Stepwise Selection
+
+Recall, a related family of alternatives to best subset are stepwise methods that explore a more restricted set of models, because it’s not always best/computationally tractable to do a *full search of all combinations*.
+
+*Forward stepwise* selection starts with a *null* model like best subset, but adds predictors one at a time until all predictors are in the model. That is, at each step we aren't searching over all possible modes that contain $k$ (or $p$) predictors. Rather we are looking at models that contain $k − 1$ predictors chosen in the previous step, and then pick variable with biggest improvement over previous version.
+    
+```{r warning = FALSE}
+set.seed(1234)
+
+forward <- regsubsets(Sale_Price ~ ., ames_lite, 
+                      nvmax = 34, 
+                      method = "forward")
+
+results_forward <- summary(forward) 
+```
+
+```{r}    
+results_forward_best <- tibble(
+  `adj_r2` = which.max(results_forward$adjr2),
+  BIC = which.min(results_forward$bic),
+  `c_p` = which.min(results_forward$cp)
+) %>%
+  gather(statistic, best)
+```
+
+```{r}
+forward_plot_data <- tibble(`c_p` = results_forward$cp,
+                            `adj_r2` = results_forward$adjr2,
+                            BIC = results_forward$bic) %>%
+  mutate(predictors = row_number()) %>%
+  gather(statistic, value, -predictors)
+
+forward_plot_data %>% 
+  ggplot(aes(predictors, value, 
+             color = statistic)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(forward_plot_data$predictors, 
+                     labels = as.character(forward_plot_data$predictors), 
+                     breaks = forward_plot_data$predictors) + 
+  theme(axis.text.x = element_text(angle = 75, vjust = 0.5)) +
+  geom_vline(data = results_forward_best,
+             aes(xintercept = best, 
+                 color = statistic), 
+             linetype = 2) +
+  facet_wrap(~ statistic, scales = "free") +
+  scale_color_brewer(type = "qual", guide = FALSE) +
+  ggtitle("Stepwise forward selection")
+```
+
+Now, finally, *backward stepwise* is same as forward, only it starts with the *full* model and iteratively removes the least useful predictor with each iteration until we get to the intercept only model. The steps are the same, so we will just leave the code in a single chunk.
+
+```{r warning = FALSE}
+set.seed(1234)
+
+# fit and store
+backward <- regsubsets(Sale_Price ~ ., ames_lite, 
+                       nvmax = 34, 
+                       method = "backward")
+
+results_backward <- summary(backward)
+
+# best mod per stat
+results_backward_best <- tibble(
+  `adj_r2` = which.max(results_backward$adjr2),
+  BIC = which.min(results_backward$bic),
+  `c_p` = which.min(results_backward$cp)
+) %>%
+  gather(statistic, best)
+
+# extract and store
+backward_plot_data <- tibble(`c_p` = results_backward$cp,
+                            `adj_r2` = results_backward$adjr2,
+                            BIC = results_backward$bic) %>%
+  mutate(predictors = row_number()) %>%
+  gather(statistic, value, -predictors)
+
+# viz
+backward_plot_data %>% 
+  ggplot(aes(predictors, value, 
+             color = statistic)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(backward_plot_data$predictors, 
+                     labels = as.character(backward_plot_data$predictors), 
+                     breaks = backward_plot_data$predictors) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  geom_vline(data = results_backward_best,
+             aes(xintercept = best, 
+                 color = statistic), 
+             linetype = 2) +
+  facet_wrap(~ statistic, scales = "free") +
+  scale_color_brewer(type = "qual", guide = FALSE) +
+  ggtitle("Stepwise backward selection")
+```
+
+# Regularization
+
+Now, regularization for regression problems: ridge, LASSO, and elastic net regression.
+
+## Ridge
+
+```{r}
+set.seed(1234)
+
+ames_train_x <- model.matrix(Sale_Price ~ ., ames_train)[, -1]
+ames_train_y <- log(ames_train$Sale_Price)
+
+ames_test_x <- model.matrix(Sale_Price ~ ., ames_test)[, -1]
+ames_test_y <- log(ames_test$Sale_Price)
+
+
+# First: ridge regression
+ames_ridge <- glmnet(
+  x = ames_train_x,
+  y = ames_train_y,
+  alpha = 0
+)
+
+plot(ames_ridge, xvar = "lambda")
+```
+
+```{r}
+coef(ames_ridge)[c("Gr_Liv_Area", "Year_Built"), 1]
+```
+
+```{r}
+coef(ames_ridge)[c("Gr_Liv_Area", "Year_Built"), 100]
+```
+
+```{r}
+# fit
+ames_ridge <- cv.glmnet(
+  x = ames_train_x,
+  y = ames_train_y,
+  alpha = 0
+)
+
+# plot CV results
+plot(ames_ridge) 
+```
+
+```{r}
+# final, best model based on tuned lambda
+ames_ridge_min <- glmnet(
+  x = ames_train_x,
+  y = ames_train_y,
+  alpha = 0
+)
+
+plot(ames_ridge_min, xvar = "lambda")
+abline(v = log(ames_ridge$lambda.1se), col = "red", lty = "dashed")
+```
+
+If you're interested...
+
+```{r}
+coef(ames_ridge, s = "lambda.1se") %>% 
+  tidy() %>%
+  filter(row != "(Intercept)") %>%
+  top_n(25, wt = abs(value)) %>%
+  ggplot(aes(value, reorder(row, value))) +
+  geom_point() +
+  labs(title = "Top 25 influential variables",
+       x = "Coefficient",
+       y = NULL)
+```
+
+## LASSO
+
+```{r}
+# fit
+ames_lasso <- glmnet(
+  x = ames_train_x,
+  y = ames_train_y,
+  alpha = 1
+)
+
+plot(ames_lasso, xvar = "lambda")
+```
+
+```{r}
+# tuning lambda
+ames_lasso <- cv.glmnet(
+  x = ames_train_x,
+  y = ames_train_y,
+  alpha = 1
+)
+
+# plot results
+plot(ames_lasso)
+```
+
+```{r}
+ames_lasso_min <- glmnet( 
+  x = ames_train_x,
+  y = ames_train_y,
+  alpha = 1
+)
+
+plot(ames_lasso_min, xvar = "lambda")
+abline(v = log(ames_lasso$lambda.min), col = "red", lty = "dashed")
+abline(v = log(ames_lasso$lambda.1se), col = "red", lty = "dashed")
+```
+
+## Elastic Net
+
+```{r}
+#
+# Elastic net regression 
+# First, naive manual varying of alpha
+lasso    <- glmnet(ames_train_x, ames_train_y, alpha = 1.0) 
+elastic1 <- glmnet(ames_train_x, ames_train_y, alpha = 0.25) 
+elastic2 <- glmnet(ames_train_x, ames_train_y, alpha = 0.75) 
+ridge    <- glmnet(ames_train_x, ames_train_y, alpha = 0.0)
+
+{
+par(mfrow = c(2, 2), mar = c(6, 4, 6, 2) + 0.1)
+plot(lasso, xvar = "lambda", main = "Lasso (Alpha = 1)\n\n\n")
+plot(elastic1, xvar = "lambda", main = "Elastic Net (Alpha = .25)\n\n\n")
+plot(elastic2, xvar = "lambda", main = "Elastic Net (Alpha = .75)\n\n\n")
+plot(ridge, xvar = "lambda", main = "Ridge (Alpha = 0)\n\n\n")
+par(mfrow = c(1,1))
+}
+```
+
+### Grid Search
+
+```{r}
+# Now, more efficient grid search for varying alpha
+fold_id <- sample(1:10, size = length(ames_train_y), replace = TRUE) # maintain the same folds across all models
+
+# search across a range of alphas
+tuning_grid <- tibble::tibble(
+  alpha      = seq(0, 1, by = .1),
+  mse_min    = NA,
+  mse_1se    = NA,
+  lambda_min = NA,
+  lambda_1se = NA
+)
+
+library(tictoc) # time it; shouldn't take too long considering the complexity of what we are doing
+
+{
+  tic()
+for(i in seq_along(tuning_grid$alpha)) {
+  # fit CV model for each alpha value
+  fit <- cv.glmnet(ames_train_x, 
+                   ames_train_y, 
+                   alpha = tuning_grid$alpha[i], 
+                   foldid = fold_id)
+  
+  # extract MSE and lambda values
+  tuning_grid$mse_min[i]    <- fit$cvm[fit$lambda == fit$lambda.min]
+  tuning_grid$mse_1se[i]    <- fit$cvm[fit$lambda == fit$lambda.1se]
+  tuning_grid$lambda_min[i] <- fit$lambda.min
+  tuning_grid$lambda_1se[i] <- fit$lambda.1se
+  }
+  toc()
+} # took ~30 seconds on my machine (4 cores)
+
+# viz
+tuning_grid %>%
+  mutate(se = mse_1se - mse_min) %>% # navigating between min and 1-SE 
+  ggplot(aes(alpha, mse_min)) +
+  geom_line(size = 2) +
+  geom_ribbon(aes(ymax = mse_min + se, 
+                  ymin = mse_min - se), 
+              alpha = .25) +
+  ggtitle("MSE ± one standard error")
+```
