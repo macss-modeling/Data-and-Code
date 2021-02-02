@@ -4,10 +4,6 @@ author: "Philip Waggoner, MACS 30100 <br /> University of Chicago"
 output: pdf_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(eval = FALSE, echo = TRUE, message = FALSE, warning = FALSE)
-```
-
 # Overview
 
 Back to the 2016 ANES data for today. 
