@@ -1,0 +1,233 @@
+---
+title: "Classification, pt. 2"
+author: "Philip Waggoner, MACS 30100 <br /> University of Chicago"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE, echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Some Changes
+
+1. *On your own code*: 
+    
+  - Scale this portion back/not every class 
+  - Complete on your own outside of class
+  
+2. *Class administration mode*: Giving asynchronous a try next week, week 5 on non-linear estimation:
+  
+	- More detailed notes (in place of a lecture) to accompany your required reading
+	- More detailed code (in place of in-person sessions) to allow you to flexibly work through some sample code
+	- There will be *no* on your own code section/code submission
+	- There will be *no* Q&A requirement
+	- There *will* be a normal weekly quiz to complete
+
+3. *Q&A Requirement*: No more Q&A requirement, but still use many outlets available for questions as they arise
+
+# Overview
+
+Goals today: 
+
+  - Cover basic model-based code in R and Python to set you up for your problem set this week
+  - Coding challenge at the end, working independently -- winner gets extra 5% on problem set
+
+# Classification with kNN, LDA, and QDA 
+
+The data we are working with for this brief session is `Court.dta`, containing several features on the U.S. Supreme Court. Each row is a case, each column is a feature. The outcome of interest is `propetit`, which is 1 when the US Supreme Court voted in favor of the petitioner (the person/party who brought the case), and 0 if they voted against the petitioner. The other features are:
+
+  - `liberal`: liberalism
+  - `usparty`: US government a party to the case (0/1)
+  - `ineffcou`: ineffective counsel (0/1)
+  - `tcterror`: trial error (0/1)
+  - `multpet`: multiple parties on the case (0/1)
+
+**Goal**: predict supreme court ruling for (1) or against (0) petitioner.
+
+```{r}
+library(tidyverse)
+library(here) # for loading data; this is *optional*
+library(tidymodels) # for accuracy, splitting, etc.
+library(foreign) # for the (stata) data
+library(class) # for knn()
+library(MASS) # for lda() and qda()
+
+# read in court data
+data <- read.dta(here("data", "Court.dta")) %>% 
+  as_tibble() %>% 
+  mutate(liberal = round(liberal * 100, 2))
+
+# split into training/test set
+split <- initial_split(data, 
+                       prop = 0.7)
+
+train <- training(split)
+test <- testing(split)
+```
+
+## kNN 
+
+The `knn()` function is from `class` package. The `tidymodels` ecosystem is more thorough, but also more complex, by comparison. Take a look at their helper page if you're interested in giving this a try for your problem set: <https://parsnip.tidymodels.org/reference/nearest_neighbor.html>.
+
+```{r}
+# fit the model using knn() from the class package
+knn_mod <- knn(train, # training set
+               test, # testing set
+               train$propetit, # outcome from the training set
+               k = 1) # local classifier, where k = 1 (feel free to change k to see differences in classification ability, i.e., comparing global vs. local behavior of the kNN classifier)
+
+table(knn_mod, test$propetit) # create simple confusion matrix
+
+mean(knn_mod == test$propetit) # calculate the overall accuracy rate
+```
+
+A few tips for Python:
+
+Consider the `KNeighborsClassifier()` function from the `neighbors` submodule of `sklearn`. Also consider `confusion_matrix` and `classification_report` from `sklearn.metrics`.
+
+## LDA 
+
+Now, let's fit LDA to the data, with the same task/goal.
+
+Now, we will fit an LDA classifier using the `lda()` function from the `MASS` package.
+
+```{r}
+# fit the LDA classifier
+lda_mod <- lda(propetit ~ ., # same model syntax we have seen before: DV ~ on IV(s)
+               data = train)
+
+# inspect
+lda_mod
+```
+
+Three key outputs: 
+
+  - "Prior probabilities of groups"
+  - "Group means"
+  - "Coefficients of linear discriminants"
+
+Now, make some predictions using `predict()`.
+
+```{r}
+# create a out of sample data frame of four observations/cases: 2 with a liberal (65) court and 2 with a conservative (35) court; 2 with the government as a party to the case and 2 without, for each liberal and conservative version of the court, holding other categorical features at median levels
+
+df <- tibble(
+  liberal = rep(c(35, 65), 2), 
+  usparty = c(0, 0, 1, 1),
+  ineffcou = rep(median(train$ineffcou), 4), # rep just means repeat the value x times, which in this case is 4, as we have 4 cases we're creating
+  tcterror = rep(median(train$tcterror), 4),
+  multpet = rep(median(train$multpet), 4))
+
+# inspect the df object once you've made it so it makes more sense how things are constructed
+df
+
+# now predict
+df_pred <- predict(lda_mod, df)
+df_pred
+```
+
+A list with three elements:
+
+  - `class`: classification assignments
+  - `posterior`: posterior probability of 1 relative to a 0
+  - `x`: linear discriminant values
+
+Exploring the (default) threshold:
+
+```{r}
+# number of no votes
+sum(df_pred$posterior[, 1] >= 0.5)
+table(df_pred$posterior[, 1] >= 0.5)
+
+# number of yes votes
+sum(df_pred$posterior[, 2] > 0.5)
+```
+
+Change the threshold.
+
+```{r}
+sum(df_pred$posterior[, 2] > 0.4)
+```
+
+## QDA 
+
+Now, we will use `qda()` from `MASS`. Most the same, except no coefficients, because the QDA classifier involves a *quadratic* (not linear as in LDA) combination of the predictors.
+
+```{r}
+qda_mod <- qda(propetit ~ ., 
+               data = train)
+```
+
+Make predictions in the same way, with the same `df`.
+
+```{r}
+predict(qda_mod, df)
+```
+
+Not much change, just strong prediction results.
+
+Some Python tips: 
+
+Consider the `LinearDiscriminantAnalysis()`, `QuadraticDiscriminantAnalysis()` functions from the `discriminant_analysis` module of `sklearn`, and also the `confusion_matrix()`, `classification_report()`, and `precision_score()` functions from `sklearn.metrics` from `sklearn`. 
+
+Example of a simple Python application of LDA using the `titanic.csv`, which you will use for the challenge next.
+
+```{python}
+import pandas as pd
+import numpy as np
+
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
+from sklearn.metrics import confusion_matrix, classification_report, precision_score
+
+titanic = pd.read_csv('titanic.csv')
+titanic.head()
+
+# define train/test split, e.g., 80/20
+X_train = titanic[:80][['Pclass', 'Age', 'SibSp', 'Parch', 'Fare', 'Female']]
+y_train = titanic[:80]['Survived']
+
+X_test = titanic[80:][['Pclass', 'Age', 'SibSp', 'Parch', 'Fare', 'Female']]
+y_test = titanic[80:]['Survived']
+
+# fit QDA and inspect output
+lda = LinearDiscriminantAnalysis()
+model = lda.fit(X_train, y_train)
+
+print(model.priors_)
+print(model.coef_)
+
+# evaluate/test
+lda_preds = model.predict(X_test)
+
+# inspect
+print(confusion_matrix(lda_preds, y_test))
+print(classification_report(y_test, lda_preds))
+```
+
+# Code Challenge
+
+**To submit your solution, simply email me your final figure: <pdwaggoner@uchicago.edu>**
+  
+## Some basics:
+
+  - *The first person to submit wins the 5% bonus on the current problem set* 
+  
+  - *Everyone* must submit their *attempt* at the challenge, whether completed or not, to today's normal code submission link on Canvas to receive credit. Normal grading guidelines apply.
+  
+  - All preprocessing is done; just load the data and begin.
+  
+  - I have answered questions 3 and 4 for you. But be careful to ensure my code integrates with your code. Keep names and objects well-organized.
+  
+  - Deliverable is a *single plot*, per the task description below.
+
+  - You may use either R or Python, and you may use any approach within these languages to answer the questions.
+  
+  - Work independently. 
+  
+  - I am here to answer questions via the chat (*directly*).
+
+## The Task
+
+Replicate the figure from slide 17 in today's lecture notes, but for logistic regression versus kNN. That is: **plot a comparison of the test error over many fits of a kNN classifier (over a range of $k$) to the test error from a logistic regression classifier**. 
+
+See `Code Challenge.Rmd` for challenge questions. The clock for the challenge runs out at 9:20 am CDT. At that point, just submit your attempt by tomorrow at 5 pm CDT to Canvas as normal.
