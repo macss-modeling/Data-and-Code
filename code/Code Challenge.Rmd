@@ -1,0 +1,69 @@
+---
+title: "Classification Coding Challenge"
+author: "Philip Waggoner, MACS 30100 <br /> University of Chicago"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE, echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Code Challenge
+
+**To submit your solution, simply email me your final figure: <pdwaggoner@uchicago.edu>**
+  
+## Some basics:
+
+  - *The first person to submit wins the 5% bonus on the current problem set* 
+  
+  - *Everyone* must submit their *attempt* at the challenge, whether completed or not, to today's normal code submission link on Canvas to receive credit. Normal grading guidelines apply.
+  
+  - All preprocessing is done; just load the data and begin.
+  
+  - I have answered questions 3 and 4 for you. But be careful to ensure my code integrates with your code. Keep names and objects well-organized.
+  
+  - Deliverable is a *single plot*, per the task description below.
+
+  - You may use either R or Python, and you may use any approach within these languages to answer the questions.
+  
+  - Work independently. 
+  
+  - I am here to answer questions via the chat (*directly*).
+
+## The Task
+
+Replicate the figure from slide 17 in today's lecture notes, but for logistic regression versus kNN classification. That is: **plot a comparison of the test error over many fits of a kNN classifier (over a range of $k$) to the test error from a logistic regression classifier**. 
+
+*Reminder*: The clock for the challenge runs out at 9:20 am CDT. At that point, just submit your attempt by tomorrow at 5 pm CDT to Canvas as normal.
+
+## The Questions
+
+1. Load the titanic data (`titanic.csv`), which has been cleaned and preprocessed for you including only relevant features for this challenge. 
+
+2. Create a train/test split, at 70/30 respectively.
+
+3. Fit *100* versions of a kNN classifier to the training data, with each fit corresponding to a different value of $k \in \{1, \dots, 100\}$. 
+
+```{r}
+mse_knn <- tibble(k = 1:100,
+                  knn_train = map(k, ~ class::knn(dplyr::select(titanic_train, -Survived),
+                                                  test = dplyr::select(titanic_train, -Survived),
+                                                  cl = titanic_train$Survived, k = .)),
+                  knn_test = map(k, ~ class::knn(dplyr::select(titanic_train, -Survived),
+                                                 test = dplyr::select(titanic_test, -Survived),
+                                                 cl = titanic_train$Survived, k = .)),
+                  err_train = map_dbl(knn_train, ~ mean(titanic_test$Survived != .)),
+                  err_test = map_dbl(knn_test, ~ mean(titanic_test$Survived != .)))
+```
+
+4. Record the testing error for *each fit* of the kNN classifier using the testing (30%) set.
+
+```{r}
+# done in the previous chunk responding to question 3
+```
+
+5. Fit a logistic regression to the training data, predicting the probability of survival (`Survived`) as a function of all other features in the data.
+
+6. Record the testing error for the logistic regression using the testing (30%) set.
+
+7. Plot the test error rate from all fits of the kNN classifier as line plot (with values of $k$ ranging along the X axis, and the range of testing error on the Y axis). Place a horizontal reference line on the plot showing the test error from the logistic regression. *Note*: The final plot created in this question is the only thing to be submitted/emailed to me. 
