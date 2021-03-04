@@ -11,7 +11,7 @@ library(tidyverse)
 library(here)
 
 set.seed(1234)
-theme_set(theme_minimal())
+theme_set(theme_minimal()) 
 ```
 
 # Statistical learning
