@@ -1,5 +1,5 @@
 # Autoencoders (30100)
-# NOTE: As before, much of this is taken from my newest book under contract with Cambridge University Press; so, please don't share the code beyond this class
+# NOTE: As before, much of this is taken from my newest book under contract with CUP so, please don't share the code beyond this class
 # Philip Waggoner, pdwaggoner@uchicago.edu
 
 # Load libraries
