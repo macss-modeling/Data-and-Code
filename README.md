@@ -1,2 +1,2 @@
 # Data-and-Code
-Miscellaneous data, code, notes, etc. for 30100
+Miscellaneous data and code for 30100
